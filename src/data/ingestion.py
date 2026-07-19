@@ -18,7 +18,7 @@ _spec.loader.exec_module(_event_alignment)
 align_array_to_timestamps = _event_alignment.align_array_to_timestamps
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data" / "processed"
+DATA_DIR = PROJECT_ROOT / "data" / "nwb"
 
 T_BEFORE = 2.0  # seconds before stim_onset
 T_AFTER = 3.0  # seconds after stim_onset
