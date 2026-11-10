@@ -10,52 +10,61 @@ Predicting continuous licking behaviour from population neural activity, with a 
 
 ## Data
 
-- **Neural recordings:** calcium imaging or electrophysiology (one session per animal)
+- **Neural recordings:** extracellular electrophysiology, one session per animal; spike trains binned at 10 ms
 - **Behavioural signal:** continuous jaw/lick trace from DeepLabCut pose estimation
 - **Trial structure:** auditory and whisker stimuli presented randomly; mice lick in response
-- **Input format:** trial-aligned segments, `-0.5 s` to `+2 s` around stimulus onset
+- **Input format:** trial-aligned segments, `-2 s` to `+3 s` around stimulus onset
 - **Format:** NWB (read via [CICADA NWB](https://gitlab.com/cossartlab/cicada_nwb))
 
 Raw and processed data are not tracked in git.
 
 ## Models
 
-| Model | Role |
-|---|---|
-| Ridge regression | Baseline and interpretability anchor |
-| LSTM | Sequence decoder exploiting temporal structure |
-| Transformer | Attention-based sequence decoder |
+| Model | Role | Status |
+|---|---|---|
+| Ridge regression | Baseline and interpretability anchor (lagged population vector → lick value) | Implemented |
+| LSTM | Sequence decoder exploiting temporal structure | Planned |
+| Transformer | NDT-style encoder: masked spike-count pretraining (Poisson loss), then fine-tuning for lick decoding; shared encoder with per-animal read-in/read-out layers | Planned |
 
 Every model must outperform ridge regression to justify its complexity. All runs are tracked in MLflow.
+
+The transformer follows the Neural Data Transformer design (Ye & Pandarinath, 2021). Design choices, literature context, and the evaluation protocol are documented in [`docs/transformer-design-notes.md`](docs/transformer-design-notes.md).
+
+## Evaluation
+
+- **Q1:** leave-one-animal-out cross-validation. Self-supervised pretraining only ever sees the training animals of a fold; hyperparameters are fixed before the final fold sweep; results are reported per held-out animal.
+- **Q2:** early → mid / late epoch transfer within each session, with no leakage across epochs.
+- **Metrics:** R², Pearson r, MSE on the held-out lick trace.
 
 ## Project structure
 
 ```
 neural-decoder/
+├── docs/
+│   └── transformer-design-notes.md
 ├── src/
 │   ├── data/
-│   │   ├── ingestion.py       # NWB → numpy arrays
-│   │   └── preprocessing.py   # filtering, alignment, epoch splitting
+│   │   ├── ingestion.py       # NWB → trial-aligned .npz (neural PSTH + DLC)
+│   │   └── preprocessing.py   # resampling, design matrices, LOAO / epoch splits
 │   ├── models/
 │   │   ├── baseline.py        # ridge regression
-│   │   ├── lstm.py
-│   │   └── transformer.py
+│   │   ├── lstm.py            # planned
+│   │   └── transformer.py     # planned
 │   ├── training/
-│   │   ├── train.py           # training loop + MLflow logging
-│   │   └── evaluate.py        # LOAO eval (Q1) + epoch eval (Q2)
+│   │   ├── train.py           # training + MLflow logging
+│   │   └── evaluate.py        # within-session (Q2) + LOAO (Q1) evaluation
 │   ├── pipeline/
-│   │   └── flow.py            # Prefect flow: ingest → preprocess → train → evaluate
+│   │   └── flow.py            # planned — Prefect flow: ingest → preprocess → train → evaluate
 │   └── api/
-│       └── main.py            # FastAPI: POST /predict
+│       └── main.py            # planned — FastAPI: POST /predict
 ├── tests/
 ├── notebooks/
-│   └── exploration.ipynb
 └── data/                      # gitignored; lives locally or in GCP storage
 ```
 
 ## Stack
 
-Python 3.12 · PyTorch · NumPy / SciPy / pandas · MLflow · Prefect · FastAPI · Evidently AI · Docker · GitHub Actions
+Python 3.12 · PyTorch · NumPy / SciPy / pandas / scikit-learn · MLflow · Prefect · FastAPI · Evidently AI · Docker · GitHub Actions
 
 ## Setup
 
@@ -66,7 +75,12 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Create environment and install dependencies
 uv sync
 
-# Run the full pipeline
-uv run prefect run src/pipeline/flow.py
-```
+# Ingest NWB sessions into trial-aligned arrays (data/nwb → data/processed)
+uv run python -m src.data.ingestion
 
+# Fit and evaluate the ridge baseline (logged to MLflow)
+uv run python -m src.training.evaluate
+
+# Browse runs
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
+```

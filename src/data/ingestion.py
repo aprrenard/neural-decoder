@@ -92,8 +92,12 @@ def extract_session(nwb_path: Path) -> dict:
 
 def main():
     for nwb_path in sorted(DATA_DIR.glob("*.nwb")):
-        result = extract_session(nwb_path)
-        out_path = DATA_DIR / f"{result['session_id']}_aligned.npz"
+        try:
+            result = extract_session(nwb_path)
+        except ValueError as e:
+            print(f"{nwb_path.name}: skipped -- {e}")
+            continue
+        out_path = PROJECT_ROOT / "data" / "processed" / f"{result['session_id']}_aligned.npz"
         np.savez(out_path, **result)
         print(f"{nwb_path.name} -> {out_path.name}")
 
